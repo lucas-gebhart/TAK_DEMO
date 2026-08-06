@@ -1,0 +1,23 @@
+services:
+  backend:
+    build: ./backend
+    volumes:
+      - takdemo-data:/app/data
+      - takdemo-tiles:/app/tile_cache
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TAKDEMO_DB_PATH=/app/data/takdemo.db
+      - TAKDEMO_TILE_CACHE=/app/tile_cache
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  takdemo-data:
+  takdemo-tiles:

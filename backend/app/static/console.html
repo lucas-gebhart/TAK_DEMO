@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>TAK Inject Console</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { display: flex; background: #0d1117; color: #e6edf3; }
+  #map { flex: 1; height: 100%; }
+  .panel { width: 340px; padding: 14px; overflow-y: auto; background: #010409; }
+  h1 { font-size: 16px; color: #58a6ff; margin-bottom: 2px; }
+  .sub { font-size: 11px; color: #8b949e; margin-bottom: 12px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8b949e; margin: 14px 0 6px; }
+  label { display: block; font-size: 11px; color: #8b949e; margin: 6px 0 2px; }
+  input, select, textarea {
+    width: 100%; background: #161b22; color: #e6edf3; border: 1px solid #30363d;
+    border-radius: 6px; padding: 5px 8px; font-size: 13px;
+  }
+  textarea { font-family: monospace; font-size: 11px; height: 110px; }
+  button {
+    background: #238636; color: #fff; border: 0; border-radius: 6px;
+    padding: 7px 12px; font-size: 13px; cursor: pointer; margin-top: 8px;
+  }
+  button.secondary { background: #21262d; border: 1px solid #30363d; }
+  button.danger { background: #da3633; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .hint { font-size: 11px; color: #d29922; margin-top: 6px; }
+  .unit-row {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 8px; margin-bottom: 6px;
+  }
+  .unit-row .cs { font-weight: 700; flex: 1; }
+  .unit-row button { margin: 0; padding: 3px 8px; font-size: 11px; }
+  .status { font-size: 12px; color: #3fb950; min-height: 16px; margin-top: 6px; }
+  .status.err { color: #f85149; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="panel">
+  <h1>Inject Console</h1>
+  <div class="sub">External data injection into the NTC TAK sim (port 8000 API)</div>
+
+  <h2>New unit</h2>
+  <label>Callsign</label>
+  <input id="callsign" value="RAVEN-1" />
+  <label>Affiliation</label>
+  <select id="affiliation">
+    <option value="friendly">Friendly</option>
+    <option value="hostile">Hostile (OPFOR)</option>
+  </select>
+  <label>Role</label>
+  <select id="role">
+    <option>infantry</option><option>armor</option><option>recon</option><option>command</option>
+  </select>
+  <label>Mesh (friendly only; joins link/stats calc)</label>
+  <select id="mesh">
+    <option value="">— none —</option>
+    <option>MESH-ALPHA</option><option>MESH-BRAVO</option><option>MESH-CHARLIE</option>
+  </select>
+  <label>Speed (m/s)</label>
+  <input id="speed" type="number" value="8" min="0" step="1" />
+  <div class="hint">Click the map to set the position, then Inject.<br/>
+  Select an injected unit below, then click the map to give it a move order.</div>
+  <button id="inject" disabled>Inject at map click…</button>
+  <div class="status" id="status"></div>
+
+  <h2>Injected units</h2>
+  <div id="units"></div>
+
+  <h2>Raw CoT XML</h2>
+  <textarea id="cot">&lt;?xml version="1.0"?&gt;
+&lt;event version="2.0" uid="EXT-001" type="a-f-G-U-C-R"
+  time="2026-01-01T00:00:00Z" start="2026-01-01T00:00:00Z"
+  stale="2026-01-01T00:05:00Z" how="m-g"&gt;
+  &lt;point lat="35.36" lon="-116.70" hae="900" ce="10" le="10"/&gt;
+  &lt;detail&gt;&lt;contact callsign="EXT-RAVEN"/&gt;&lt;/detail&gt;
+&lt;/event&gt;</textarea>
+  <button id="sendcot" class="secondary">POST /api/inject/cot</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([35.335, -116.680], 12);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  { attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }).addTo(map);
+
+let clickPos = null;
+let selectedUid = null;
+const clickMarker = L.circleMarker([0, 0], { radius: 7, color: '#d29922' });
+const injectBtn = document.getElementById('inject');
+const statusEl = document.getElementById('status');
+const markers = {};
+
+function setStatus(msg, err) {
+  statusEl.textContent = msg;
+  statusEl.className = 'status' + (err ? ' err' : '');
+}
+
+map.on('click', async (e) => {
+  if (selectedUid) {
+    const speed = Number(document.getElementById('speed').value) || 8;
+    const r = await fetch(`/api/inject/unit/${selectedUid}/move`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_lat: e.latlng.lat, target_lon: e.latlng.lng, speed_mps: speed }),
+    });
+    setStatus(r.ok ? `Move order sent to ${selectedUid.slice(0, 8)}…` : 'Move failed', !r.ok);
+    selectedUid = null;
+    refresh();
+    return;
+  }
+  clickPos = e.latlng;
+  clickMarker.setLatLng(e.latlng).addTo(map);
+  injectBtn.disabled = false;
+  injectBtn.textContent = `Inject at ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+});
+
+injectBtn.addEventListener('click', async () => {
+  if (!clickPos) return;
+  const body = {
+    callsign: document.getElementById('callsign').value || 'INJECT-1',
+    affiliation: document.getElementById('affiliation').value,
+    role: document.getElementById('role').value,
+    mesh_id: document.getElementById('mesh').value || null,
+    lat: clickPos.lat, lon: clickPos.lng,
+    speed_mps: Number(document.getElementById('speed').value) || 5,
+  };
+  if (body.affiliation === 'hostile') { body.role = 'opfor_' + body.role; body.mesh_id = null; }
+  const r = await fetch('/api/inject/unit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  setStatus(r.ok ? `Injected ${body.callsign}` : 'Inject failed', !r.ok);
+  clickMarker.remove(); clickPos = null;
+  injectBtn.disabled = true; injectBtn.textContent = 'Inject at map click…';
+  refresh();
+});
+
+document.getElementById('sendcot').addEventListener('click', async () => {
+  const r = await fetch('/api/inject/cot', {
+    method: 'POST', headers: { 'Content-Type': 'application/xml' },
+    body: document.getElementById('cot').value,
+  });
+  const j = await r.json();
+  setStatus(r.ok ? `CoT accepted: ${j.callsign}` : `CoT rejected: ${j.detail}`, !r.ok);
+  refresh();
+});
+
+async function refresh() {
+  const units = await (await fetch('/api/inject/units')).json();
+  const box = document.getElementById('units');
+  box.innerHTML = '';
+  for (const u of units) {
+    if (u.destroyed) continue;
+    if (!markers[u.uid]) {
+      markers[u.uid] = L.circleMarker([u.lat, u.lon], { radius: 6 })
+        .bindTooltip(u.callsign, { permanent: true, direction: 'top' }).addTo(map);
+    }
+    markers[u.uid].setLatLng([u.lat, u.lon]);
+    markers[u.uid].setStyle({ color: u.affiliation === 'hostile' ? '#f85149' : '#58a6ff' });
+
+    const row = document.createElement('div');
+    row.className = 'unit-row';
+    row.innerHTML = `<span class="cs">${u.callsign}</span>
+      <span>${u.mesh_id ?? (u.affiliation === 'hostile' ? 'OPFOR' : '—')}</span>`;
+    const moveB = document.createElement('button');
+    moveB.className = 'secondary';
+    moveB.textContent = selectedUid === u.uid ? 'click map…' : 'Move';
+    moveB.onclick = () => { selectedUid = selectedUid === u.uid ? null : u.uid; refresh(); };
+    const delB = document.createElement('button');
+    delB.className = 'danger';
+    delB.textContent = 'Kill';
+    delB.onclick = async () => {
+      await fetch(`/api/inject/unit/${u.uid}`, { method: 'DELETE' });
+      markers[u.uid]?.remove(); delete markers[u.uid];
+      refresh();
+    };
+    row.append(moveB, delB);
+    box.appendChild(row);
+  }
+  for (const uid of Object.keys(markers)) {
+    if (!units.find((u) => u.uid === uid && !u.destroyed)) { markers[uid].remove(); delete markers[uid]; }
+  }
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
