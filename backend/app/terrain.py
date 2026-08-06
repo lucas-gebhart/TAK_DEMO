@@ -12,7 +12,9 @@ import numpy as np
 
 TILE_ZOOM = 11
 TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "tile_cache")
+CACHE_DIR = os.environ.get(
+    "TAKDEMO_TILE_CACHE", os.path.join(os.path.dirname(__file__), "..", "tile_cache")
+)
 
 
 def _latlon_to_tile(lat: float, lon: float, zoom: int):

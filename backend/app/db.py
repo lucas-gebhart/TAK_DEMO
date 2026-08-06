@@ -3,7 +3,9 @@ import os
 import sqlite3
 import threading
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "takdemo.db")
+DB_PATH = os.environ.get(
+    "TAKDEMO_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "takdemo.db")
+)
 
 _local = threading.local()
 

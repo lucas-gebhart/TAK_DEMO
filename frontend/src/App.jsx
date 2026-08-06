@@ -105,16 +105,28 @@ export default function App() {
         <div className="map-container">
           <MapContainer center={[center.lat, center.lon]} zoom={12} style={{ height: '100%' }}>
             <LayersControl position="topright">
-              <LayersControl.BaseLayer checked name="Topographic">
+              <LayersControl.BaseLayer checked name="Clean (light)">
+                <TileLayer
+                  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                  attribution="&copy; OpenStreetMap contributors &copy; CARTO"
+                />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name="Clean (dark)">
+                <TileLayer
+                  url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                  attribution="&copy; OpenStreetMap contributors &copy; CARTO"
+                />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name="Terrain (Esri)">
+                <TileLayer
+                  url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}"
+                  attribution="&copy; Esri"
+                />
+              </LayersControl.BaseLayer>
+              <LayersControl.BaseLayer name="Topographic">
                 <TileLayer
                   url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
                   attribution="&copy; OpenTopoMap, &copy; OpenStreetMap contributors"
-                />
-              </LayersControl.BaseLayer>
-              <LayersControl.BaseLayer name="Streets">
-                <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution="&copy; OpenStreetMap contributors"
                 />
               </LayersControl.BaseLayer>
             </LayersControl>

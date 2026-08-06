@@ -2,12 +2,16 @@
 html, body, #root { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; }
 
 .app { display: flex; height: 100%; background: #0d1117; color: #e6edf3; }
-.map-column { flex: 1; display: flex; flex-direction: column; height: 100%; }
+.map-column { flex: 1; display: flex; flex-direction: column; height: 100%; position: relative; }
 .map-container { flex: 1; min-height: 0; }
 
 .playback-bar {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  z-index: 1000; width: min(860px, calc(100% - 40px));
   display: flex; align-items: center; gap: 6px;
-  padding: 8px 12px; background: #161b22; border-top: 1px solid #30363d;
+  padding: 10px 14px; background: rgba(22, 27, 34, 0.92);
+  border: 1px solid #30363d; border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .playback-bar button {
   background: #21262d; color: #e6edf3; border: 1px solid #30363d;

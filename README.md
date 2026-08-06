@@ -18,6 +18,15 @@ A TAK-style situational awareness demo centered on the **National Training Cente
 
 ## Running
 
+### Docker (recommended)
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:8080. The frontend container (nginx) proxies `/api` and `/ws`
+to the backend container; the SQLite DB and terrain tile cache persist in named volumes.
+
 ### Backend
 
 ```bash
@@ -52,4 +61,9 @@ Open http://localhost:5173. The Vite dev server proxies `/api` and `/ws` to the 
 
 ## Database
 
-SQLite (`backend/takdemo.db`) tables: `units`, `cot_events`, `message_log`, `link_snapshots`, `snapshots`.
+SQLite (`backend/takdemo.db`, or `TAKDEMO_DB_PATH`) tables: `units`, `cot_events`, `message_log`, `link_snapshots`, `snapshots`.
+
+## External injects
+
+See [docs/INJECT_API_PROPOSAL.md](docs/INJECT_API_PROPOSAL.md) for the design proposal
+to accept CoT/unit/event injects from outside sources (REST + native CoT listener).
