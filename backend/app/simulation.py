@@ -66,6 +66,55 @@ class ScenarioUnit:
         }
 
 
+class InjectedUnit:
+    """A unit added at runtime via the inject API. Moves in a straight line
+    toward an optional target at speed_mps; holds position otherwise."""
+
+    def __init__(self, spec, tick: int):
+        self.uid = spec.get("uid") or new_uid()
+        self.callsign = spec["callsign"]
+        self.role = spec.get("role", "infantry")
+        self.affiliation = spec.get("affiliation", "friendly")
+        self.mesh_id = spec.get("mesh_id")
+        self.lat = float(spec["lat"])
+        self.lon = float(spec["lon"])
+        self.target = None  # (lat, lon)
+        self.speed_mps = float(spec.get("speed_mps", 5.0))
+        self.injected_at = tick
+        self.destroyed = False
+        if spec.get("target_lat") is not None and spec.get("target_lon") is not None:
+            self.target = (float(spec["target_lat"]), float(spec["target_lon"]))
+
+    def step(self):
+        if self.target is None:
+            return
+        tlat, tlon = self.target
+        d = haversine_m(self.lat, self.lon, tlat, tlon)
+        step = self.speed_mps * TICK_SECONDS
+        if d <= step or d < 1.0:
+            self.lat, self.lon = tlat, tlon
+            self.target = None
+            return
+        f = step / d
+        self.lat += (tlat - self.lat) * f
+        self.lon += (tlon - self.lon) * f
+
+    def state(self) -> dict:
+        course = 0.0
+        if self.target is not None:
+            dy = self.target[0] - self.lat
+            dx = (self.target[1] - self.lon) * math.cos(math.radians(self.lat))
+            course = math.degrees(math.atan2(dx, dy)) % 360
+        return {
+            "uid": self.uid, "callsign": self.callsign, "affiliation": self.affiliation,
+            "role": self.role, "mesh_id": self.mesh_id, "lat": self.lat, "lon": self.lon,
+            "hae": terrain.elevation(self.lat, self.lon),
+            "speed_mps": self.speed_mps if self.target else 0.0, "course_deg": course,
+            "team": "Cyan" if self.affiliation == "friendly" else "Red",
+            "injected": True,
+        }
+
+
 class Simulation:
     def __init__(self):
         random.seed(42)  # deterministic playback
@@ -76,6 +125,8 @@ class Simulation:
         self.live_tick = 0
         self.lock = threading.Lock()
         self._stop = threading.Event()
+        self.injected: dict[str, InjectedUnit] = {}
+        self.inject_lock = threading.Lock()
 
     # ---- link & routing helpers -------------------------------------------
 
@@ -118,6 +169,18 @@ class Simulation:
                              "lat", "lon", "hae", "speed_mps", "course_deg")})
             db.insert_cot(u.uid, cot_xml(s))
 
+        with self.inject_lock:
+            for iu in self.injected.values():
+                if iu.destroyed:
+                    continue
+                iu.step()
+                s = iu.state()
+                states.append(s)
+                db.upsert_unit({k: s[k] for k in
+                                ("uid", "callsign", "affiliation", "role", "mesh_id",
+                                 "lat", "lon", "hae", "speed_mps", "course_deg")})
+                db.insert_cot(iu.uid, cot_xml(s))
+
         friendly = [s for s in states if s["affiliation"] == "friendly"]
         quality = {}
         for i, a in enumerate(friendly):
@@ -136,10 +199,12 @@ class Simulation:
             db.insert_link(tick, a, b, q, kind)
 
         # message traffic: intra-mesh chatter + command-to-command reports
-        mesh_ids = sorted({s["mesh_id"] for s in friendly})
+        mesh_ids = sorted({s["mesh_id"] for s in friendly if s["mesh_id"]})
         commands = {s["mesh_id"]: s for s in friendly if s["role"] == "command"}
         attempts = []
         for s in friendly:
+            if not s["mesh_id"]:
+                continue
             peers = [v for v in friendly if v["mesh_id"] == s["mesh_id"] and v["uid"] != s["uid"]]
             for _ in range(MESSAGES_PER_UNIT_PER_TICK):
                 if peers:
@@ -189,7 +254,7 @@ class Simulation:
         db.commit()
         return {
             "tick": tick,
-            "length": self.length,
+            "length": max(self.length, tick + 1),
             "phase": phase_at(tick),
             "scenario": {"name": SCENARIO["name"], "description": SCENARIO["description"],
                          "phases": SCENARIO["phases"]},
@@ -232,41 +297,78 @@ class Simulation:
             return {
                 "scenario": {"name": SCENARIO["name"], "description": SCENARIO["description"],
                              "phases": SCENARIO["phases"]},
-                "length": self.length,
+                "length": max(self.length, len(self.snapshots)),
+                "scenario_length": self.length,
                 "ready_ticks": len(self.snapshots),
                 "live_tick": self.live_tick,
                 "tick_seconds": TICK_SECONDS,
             }
 
+    # ---- inject API -----------------------------------------------------------
+
+    def inject_unit(self, spec: dict) -> dict:
+        with self.inject_lock:
+            unit = InjectedUnit(spec, len(self.snapshots))
+            self.injected[unit.uid] = unit
+            return unit.state()
+
+    def move_unit(self, uid: str, target_lat: float, target_lon: float,
+                  speed_mps: float | None = None) -> bool:
+        with self.inject_lock:
+            unit = self.injected.get(uid)
+            if unit is None or unit.destroyed:
+                return False
+            unit.target = (float(target_lat), float(target_lon))
+            if speed_mps is not None:
+                unit.speed_mps = float(speed_mps)
+            return True
+
+    def destroy_unit(self, uid: str) -> bool:
+        with self.inject_lock:
+            unit = self.injected.get(uid)
+            if unit is None:
+                return False
+            unit.destroyed = True
+            return True
+
+    def injected_units(self) -> list[dict]:
+        with self.inject_lock:
+            return [{**u.state(), "destroyed": u.destroyed}
+                    for u in self.injected.values()]
+
     # ---- threads -------------------------------------------------------------
 
-    def precompute(self):
-        for tick in range(self.length):
-            if self._stop.is_set():
-                return
+    def run(self):
+        """Precompute the scripted battle at full speed, then keep the sim
+        alive: one new tick every TICK_SECONDS so injected units move and
+        show up in real time. Everything stays recorded and rewindable."""
+        tick = 0
+        while not self._stop.is_set():
+            if tick >= self.length:  # live extension: real-time cadence
+                if tick == self.length:
+                    print("scenario precompute complete; entering live mode")
+                self._stop.wait(TICK_SECONDS)
+                if self._stop.is_set():
+                    return
             try:
                 snap = self._compute_tick(tick)
             except Exception as e:
-                print(f"precompute error at tick {tick}: {e}")
-                continue
+                print(f"tick {tick} error: {e}")
+                snap = dict(self.snapshots[-1]) if self.snapshots else None
+                if snap is None:
+                    tick += 1
+                    continue
+                snap["tick"] = tick
             with self.lock:
                 self.snapshots.append(snap)
+                self.live_tick = tick
             db.insert_snapshot(tick, json.dumps(snap))
-            if tick % 50 == 0:
+            if tick % 50 == 0 or tick >= self.length:
                 db.commit()
-        db.commit()
-        print("scenario precompute complete")
-
-    def run_live_pointer(self):
-        while not self._stop.is_set():
-            self._stop.wait(TICK_SECONDS)
-            with self.lock:
-                if self.snapshots:
-                    self.live_tick = (self.live_tick + 1) % len(self.snapshots)
+            tick += 1
 
     def start(self):
-        threading.Thread(target=self.precompute, daemon=True).start()
-        threading.Thread(target=self.run_live_pointer, daemon=True).start()
+        threading.Thread(target=self.run, daemon=True).start()
 
     def stop(self):
         self._stop.set()

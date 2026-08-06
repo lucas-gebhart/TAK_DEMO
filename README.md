@@ -8,7 +8,8 @@ A TAK-style situational awareness demo centered on the **National Training Cente
 ## Features
 
 - **Force-on-force scenario — "Battle of the Central Corridor"**: a scripted OPFOR motorized-regiment attack east through the NTC Central Corridor toward the Whale Gap against a defending BLUFOR task force (two company teams forward, scouts screening, reserve counterattack). Units follow timed waypoint routes; scripted losses remove units mid-battle.
-- **TAK-style playback**: the whole battle (600 ticks ≈ 10 h of battle time) is precomputed at startup and recorded per tick (SQLite `snapshots` table). The UI has rewind, play/pause, fast-forward (1/2/4/8x), jump-to-start/end, and a scrubbable timeline slider (`/api/playback/meta`, `/api/playback/snapshot?tick=N`).
+- **TAK-style playback**: the whole battle (600 ticks ≈ 10 h of battle time) is precomputed at startup and recorded per tick (SQLite `snapshots` table). The UI has rewind, play/pause, fast-forward (1/2/4/8x), jump-to-start/end, a LIVE follow mode, and a scrubbable timeline slider (`/api/playback/meta`, `/api/playback/snapshot?tick=N`).
+- **External inject API + console**: after the scripted battle, the sim keeps ticking live (one tick per 2 s, still recorded/rewindable). Outside sources can inject units via REST — JSON (`POST /api/inject/unit`) or raw CoT 2.0 XML (`POST /api/inject/cot`) — give them move orders, and kill them. Injected friendly units with a `mesh_id` join link/routing/stats computation automatically. A lightweight inject console is served at `http://localhost:8000/console`: click the map to place units, click again to send move orders, or paste raw CoT.
 
 - 3 friendly mesh networks (Alpha / Bravo / Charlie), each with a command node, infantry, armor, and recon units. 6 OPFOR tracks in two attack echelons plus regimental recon.
 - CoT 2.0 XML events generated every tick for each unit and stored in SQLite (`/api/cot/recent`).
@@ -55,6 +56,12 @@ Open http://localhost:5173. The Vite dev server proxies `/api` and `/ws` to the 
 | `GET /api/stats` | Message completion rates (rolling window) |
 | `GET /api/playback/meta` | Scenario info, length, computed ticks |
 | `GET /api/playback/snapshot?tick=N` | Recorded snapshot at tick N |
+| `POST /api/inject/unit` | Inject a unit (JSON: callsign, role, affiliation, mesh_id, lat, lon, target_lat/lon, speed_mps) |
+| `POST /api/inject/cot` | Inject/update a unit from raw CoT 2.0 XML |
+| `POST /api/inject/unit/{uid}/move` | Send a move order to an injected unit |
+| `DELETE /api/inject/unit/{uid}` | Remove an injected unit |
+| `GET /api/inject/units` | List injected units |
+| `GET /console` | Lightweight inject console web app |
 | `GET /api/cot/recent` | Recent CoT XML events |
 | `GET /api/messages/recent` | Recent message attempts (hops, quality, delivered) |
 | `WS /ws/state` | Snapshot pushed every 2 s |

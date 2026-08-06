@@ -1,5 +1,6 @@
 """Cursor-on-Target (CoT) event generation."""
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from xml.sax.saxutils import escape
 
@@ -39,3 +40,29 @@ def cot_xml(unit: dict, stale_seconds: int = 60) -> str:
 
 def new_uid() -> str:
     return str(uuid.uuid4())
+
+
+def parse_cot(xml_text: str) -> dict:
+    """Parse a CoT 2.0 event into an inject-unit spec. Raises ValueError."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        raise ValueError(f"invalid XML: {e}") from e
+    if root.tag != "event":
+        raise ValueError("root element must be <event>")
+    point = root.find("point")
+    if point is None:
+        raise ValueError("missing <point>")
+    cot_type = root.get("type", "a-f-G-U-C")
+    affiliation = "hostile" if cot_type.startswith("a-h") else "friendly"
+    role_by_type = {v: k for k, v in COT_TYPES.items()}
+    contact = root.find("detail/contact")
+    callsign = (contact.get("callsign") if contact is not None else None) or root.get("uid", "UNKNOWN")
+    return {
+        "uid": root.get("uid"),
+        "callsign": callsign,
+        "affiliation": affiliation,
+        "role": role_by_type.get(cot_type, "infantry" if affiliation == "friendly" else "opfor_infantry"),
+        "lat": float(point.get("lat")),
+        "lon": float(point.get("lon")),
+    }

@@ -41,6 +41,7 @@ export default function App() {
   const [playing, setPlaying] = useState(true)
   const [direction, setDirection] = useState(1) // 1 forward, -1 rewind
   const [speed, setSpeed] = useState(1)
+  const [live, setLive] = useState(false)
   const cache = useRef(new Map())
 
   // poll playback meta (ready_ticks grows while backend precomputes)
@@ -52,16 +53,21 @@ export default function App() {
       } catch { /* backend starting */ }
     }
     load()
-    const id = setInterval(load, 3000)
+    const id = setInterval(load, 2000)
     return () => clearInterval(id)
   }, [])
 
   const readyTicks = meta?.ready_ticks ?? 0
   const length = meta?.length ?? 600
 
+  // live mode: follow the newest computed tick
+  useEffect(() => {
+    if (live && readyTicks > 0) setTick(readyTicks - 1)
+  }, [live, readyTicks])
+
   // playback clock
   useEffect(() => {
-    if (!playing || readyTicks === 0) return undefined
+    if (live || !playing || readyTicks === 0) return undefined
     const id = setInterval(() => {
       setTick((t) => {
         let next = t + direction * speed
@@ -71,7 +77,7 @@ export default function App() {
       })
     }, TICK_MS)
     return () => clearInterval(id)
-  }, [playing, direction, speed, readyTicks])
+  }, [live, playing, direction, speed, readyTicks])
 
   // fetch snapshot for current tick (cached)
   useEffect(() => {
@@ -101,35 +107,41 @@ export default function App() {
 
   const playbackControls = (
     <>
-      <button title="Jump to start" onClick={() => { setTick(0) }}>⏮</button>
+      <button title="Jump to start" onClick={() => { setLive(false); setTick(0) }}>⏮</button>
       <button
         title="Rewind"
-        className={direction === -1 && playing ? 'active' : ''}
-        onClick={() => { setDirection(-1); setPlaying(true) }}
+        className={!live && direction === -1 && playing ? 'active' : ''}
+        onClick={() => { setLive(false); setDirection(-1); setPlaying(true) }}
       >⏪</button>
       <button
         title={playing ? 'Pause' : 'Play'}
         onClick={() => {
+          setLive(false)
           if (playing && direction === 1) setPlaying(false)
           else { setDirection(1); setPlaying(true) }
         }}
-      >{playing && direction === 1 ? '⏸' : '▶'}</button>
+      >{!live && playing && direction === 1 ? '⏸' : '▶'}</button>
       <button
         title="Fast forward (cycle speed)"
-        className={speed > 1 ? 'active' : ''}
+        className={!live && speed > 1 ? 'active' : ''}
         onClick={() => {
-          setDirection(1); setPlaying(true)
+          setLive(false); setDirection(1); setPlaying(true)
           setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])
         }}
       >⏩ {speed}x</button>
-      <button title="Jump to end" onClick={() => { setTick(Math.max(0, readyTicks - 1)); setPlaying(false) }}>⏭</button>
+      <button title="Jump to end" onClick={() => { setLive(false); setTick(Math.max(0, readyTicks - 1)); setPlaying(false) }}>⏭</button>
+      <button
+        title="Follow live sim (injected units appear here)"
+        className={live ? 'active live' : 'live'}
+        onClick={() => { setLive(!live); setPlaying(false) }}
+      >◉ LIVE</button>
 
       <input
         type="range"
         min={0}
         max={Math.max(0, length - 1)}
         value={Math.min(tick, length - 1)}
-        onChange={(e) => { setTick(Number(e.target.value)); setPlaying(false) }}
+        onChange={(e) => { setLive(false); setTick(Number(e.target.value)); setPlaying(false) }}
         style={{ '--ready': `${(readyTicks / length) * 100}%`, '--pos': `${pct}%` }}
       />
       <span className="time">
@@ -206,6 +218,7 @@ export default function App() {
                     fillColor: color,
                     fillOpacity: hostile ? 0.5 : 0.85,
                     weight: u.role === 'command' ? 3 : 1.5,
+                    dashArray: u.injected ? '3 3' : undefined,
                   }}
                 >
                   <Tooltip permanent direction="top" offset={[0, -8]} className="unit-label">
