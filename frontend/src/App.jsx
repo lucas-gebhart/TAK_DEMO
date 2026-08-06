@@ -99,6 +99,45 @@ export default function App() {
   const pct = length ? (Math.min(tick, length) / length) * 100 : 0
   const battleTime = `H+${Math.floor(tick / 60)}:${String(tick % 60).padStart(2, '0')}`
 
+  const playbackControls = (
+    <>
+      <button title="Jump to start" onClick={() => { setTick(0) }}>⏮</button>
+      <button
+        title="Rewind"
+        className={direction === -1 && playing ? 'active' : ''}
+        onClick={() => { setDirection(-1); setPlaying(true) }}
+      >⏪</button>
+      <button
+        title={playing ? 'Pause' : 'Play'}
+        onClick={() => {
+          if (playing && direction === 1) setPlaying(false)
+          else { setDirection(1); setPlaying(true) }
+        }}
+      >{playing && direction === 1 ? '⏸' : '▶'}</button>
+      <button
+        title="Fast forward (cycle speed)"
+        className={speed > 1 ? 'active' : ''}
+        onClick={() => {
+          setDirection(1); setPlaying(true)
+          setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])
+        }}
+      >⏩ {speed}x</button>
+      <button title="Jump to end" onClick={() => { setTick(Math.max(0, readyTicks - 1)); setPlaying(false) }}>⏭</button>
+
+      <input
+        type="range"
+        min={0}
+        max={Math.max(0, length - 1)}
+        value={Math.min(tick, length - 1)}
+        onChange={(e) => { setTick(Number(e.target.value)); setPlaying(false) }}
+        style={{ '--ready': `${(readyTicks / length) * 100}%`, '--pos': `${pct}%` }}
+      />
+      <span className="time">
+        {battleTime} {readyTicks < length ? `· computing ${Math.round((readyTicks / length) * 100)}%` : ''}
+      </span>
+    </>
+  )
+
   return (
     <div className="app">
       <div className="map-column">
@@ -182,47 +221,15 @@ export default function App() {
           </MapContainer>
         </div>
 
-        <div className="playback-bar">
-          <button title="Jump to start" onClick={() => { setTick(0) }}>⏮</button>
-          <button
-            title="Rewind"
-            className={direction === -1 && playing ? 'active' : ''}
-            onClick={() => { setDirection(-1); setPlaying(true) }}
-          >⏪</button>
-          <button
-            title={playing ? 'Pause' : 'Play'}
-            onClick={() => {
-              if (playing && direction === 1) setPlaying(false)
-              else { setDirection(1); setPlaying(true) }
-            }}
-          >{playing && direction === 1 ? '⏸' : '▶'}</button>
-          <button
-            title="Fast forward (cycle speed)"
-            className={speed > 1 ? 'active' : ''}
-            onClick={() => {
-              setDirection(1); setPlaying(true)
-              setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])
-            }}
-          >⏩ {speed}x</button>
-          <button title="Jump to end" onClick={() => { setTick(Math.max(0, readyTicks - 1)); setPlaying(false) }}>⏭</button>
-
-          <input
-            type="range"
-            min={0}
-            max={Math.max(0, length - 1)}
-            value={Math.min(tick, length - 1)}
-            onChange={(e) => { setTick(Number(e.target.value)); setPlaying(false) }}
-            style={{ '--ready': `${(readyTicks / length) * 100}%`, '--pos': `${pct}%` }}
-          />
-          <span className="time">
-            {battleTime} {readyTicks < length ? `· computing ${Math.round((readyTicks / length) * 100)}%` : ''}
-          </span>
-        </div>
+        <div className="playback-bar">{playbackControls}</div>
       </div>
 
       <div className="sidebar">
         <h1>NTC TAK Demo</h1>
         <div className="sub">National Training Center · Fort Irwin, CA</div>
+
+        <h2>Playback</h2>
+        <div className="playback-panel">{playbackControls}</div>
 
         <h2>Scenario</h2>
         <div className="scenario">
