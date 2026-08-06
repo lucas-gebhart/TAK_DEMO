@@ -1,0 +1,33 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #root { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+.app { display: flex; height: 100%; background: #0d1117; color: #e6edf3; }
+.map-container { flex: 1; height: 100%; }
+.sidebar {
+  width: 320px; padding: 14px; overflow-y: auto;
+  background: #161b22; border-left: 1px solid #30363d;
+}
+.sidebar h1 { font-size: 16px; margin-bottom: 4px; color: #58a6ff; }
+.sidebar h2 { font-size: 13px; margin: 14px 0 6px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+.sidebar .sub { font-size: 11px; color: #8b949e; }
+.stat-card {
+  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+  padding: 8px 10px; margin-bottom: 6px;
+}
+.stat-card .mesh-name { font-size: 13px; font-weight: 600; }
+.stat-card .rate { font-size: 20px; font-weight: 700; }
+.rate.good { color: #3fb950; }
+.rate.mid { color: #d29922; }
+.rate.bad { color: #f85149; }
+.stat-card .detail { font-size: 11px; color: #8b949e; }
+.legend { font-size: 12px; line-height: 1.7; }
+.legend .swatch {
+  display: inline-block; width: 18px; height: 3px; margin-right: 6px; vertical-align: middle;
+}
+.tick { font-size: 11px; color: #8b949e; margin-top: 10px; }
+.unit-label {
+  background: rgba(13, 17, 23, 0.8); border: none; box-shadow: none;
+  color: #e6edf3; font-size: 10px; font-weight: 600; padding: 1px 4px;
+  border-radius: 3px; white-space: nowrap;
+}
+.leaflet-container { background: #1c2128; }
