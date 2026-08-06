@@ -6,3 +6,5 @@ backend/tile_cache/
 frontend/node_modules/
 frontend/dist/
 .env
+test-plan.md
+test-report.md
