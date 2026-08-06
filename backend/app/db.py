@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS message_log (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS snapshots (
+    tick INTEGER PRIMARY KEY,
+    json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS link_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tick INTEGER NOT NULL,
@@ -97,6 +103,12 @@ def insert_link(tick, a, b, quality, kind):
     get_conn().execute(
         "INSERT INTO link_snapshots (tick, a_uid, b_uid, quality, kind) VALUES (?, ?, ?, ?, ?)",
         (tick, a, b, quality, kind),
+    )
+
+
+def insert_snapshot(tick: int, payload: str):
+    get_conn().execute(
+        "INSERT OR REPLACE INTO snapshots (tick, json) VALUES (?, ?)", (tick, payload)
     )
 
 

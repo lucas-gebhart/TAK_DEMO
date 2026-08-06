@@ -10,6 +10,7 @@ COT_TYPES = {
     "command": "a-f-G-U-H",
     "opfor_infantry": "a-h-G-U-C-I",
     "opfor_armor": "a-h-G-U-C-A",
+    "opfor_recon": "a-h-G-U-C-R",
 }
 
 

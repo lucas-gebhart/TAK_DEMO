@@ -1,9 +1,8 @@
 """FastAPI backend for the NTC TAK demo."""
 import asyncio
-import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import db
@@ -13,8 +12,7 @@ from .simulation import simulation
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
-    t = threading.Thread(target=simulation.run_forever, daemon=True)
-    t.start()
+    simulation.start()
     yield
     simulation.stop()
 
@@ -41,6 +39,19 @@ def get_units():
 @app.get("/api/stats")
 def get_stats():
     return simulation.snapshot()["stats"]
+
+
+@app.get("/api/playback/meta")
+def playback_meta():
+    return simulation.meta()
+
+
+@app.get("/api/playback/snapshot")
+def playback_snapshot(tick: int):
+    snap = simulation.snapshot_at(tick)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="no snapshots computed yet")
+    return snap
 
 
 @app.get("/api/cot/recent")
