@@ -10,6 +10,8 @@ import threading
 
 import numpy as np
 
+from .geo import clamp_for_tiles
+
 TILE_ZOOM = 11
 TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
 CACHE_DIR = os.environ.get(
@@ -63,6 +65,7 @@ class TerrainService:
             return None
 
     def elevation(self, lat: float, lon: float) -> float:
+        lat, lon = clamp_for_tiles(lat, lon)
         xt, yt = _latlon_to_tile(lat, lon, TILE_ZOOM)
         tx, ty = int(xt), int(yt)
         arr = self._load_tile(tx, ty)
