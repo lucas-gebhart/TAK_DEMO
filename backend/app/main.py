@@ -4,9 +4,11 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import db
 from .cot import parse_cot
@@ -30,6 +32,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """Report validation errors without echoing the offending input, which may
+    be a non-JSON-serializable float such as Infinity or NaN."""
+    detail = [{k: e[k] for k in ("loc", "msg", "type") if k in e} for e in exc.errors()]
+    return JSONResponse(status_code=422, content=jsonable_encoder(detail))
 
 
 @app.get("/api/state")
@@ -80,26 +90,33 @@ def recent_messages(limit: int = 50):
 
 
 class InjectUnit(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     callsign: str
     role: str = "infantry"
     affiliation: str = "friendly"
     mesh_id: str | None = None
-    lat: float
-    lon: float
-    target_lat: float | None = None
-    target_lon: float | None = None
-    speed_mps: float = 5.0
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+    target_lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    target_lon: float | None = Field(default=None, ge=-180.0, le=180.0)
+    speed_mps: float = Field(default=5.0, ge=0.0, le=10000.0)
 
 
 class MoveOrder(BaseModel):
-    target_lat: float
-    target_lon: float
-    speed_mps: float | None = None
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    target_lat: float = Field(ge=-90.0, le=90.0)
+    target_lon: float = Field(ge=-180.0, le=180.0)
+    speed_mps: float | None = Field(default=None, ge=0.0, le=10000.0)
 
 
 @app.post("/api/inject/unit")
 def inject_unit(spec: InjectUnit):
-    return simulation.inject_unit(spec.model_dump())
+    try:
+        return simulation.inject_unit(spec.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/inject/cot")
@@ -110,15 +127,22 @@ async def inject_cot(request: Request):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     existing = {u["uid"]: u for u in simulation.injected_units()}
-    if spec["uid"] in existing:
-        simulation.move_unit(spec["uid"], spec["lat"], spec["lon"], speed_mps=999.0)
-        return {**existing[spec["uid"]], "updated": True}
-    return simulation.inject_unit(spec)
+    try:
+        if spec["uid"] in existing:
+            simulation.move_unit(spec["uid"], spec["lat"], spec["lon"], speed_mps=999.0)
+            return {**existing[spec["uid"]], "updated": True}
+        return simulation.inject_unit(spec)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/inject/unit/{uid}/move")
 def move_unit(uid: str, order: MoveOrder):
-    if not simulation.move_unit(uid, order.target_lat, order.target_lon, order.speed_mps):
+    try:
+        moved = simulation.move_unit(uid, order.target_lat, order.target_lon, order.speed_mps)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not moved:
         raise HTTPException(status_code=404, detail="unknown or destroyed injected unit")
     return {"ok": True}
 

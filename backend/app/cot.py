@@ -4,6 +4,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from xml.sax.saxutils import escape
 
+from .geo import validate_latlon
+
 COT_TYPES = {
     "infantry": "a-f-G-U-C-I",
     "armor": "a-f-G-U-C-A",
@@ -58,11 +60,12 @@ def parse_cot(xml_text: str) -> dict:
     role_by_type = {v: k for k, v in COT_TYPES.items()}
     contact = root.find("detail/contact")
     callsign = (contact.get("callsign") if contact is not None else None) or root.get("uid", "UNKNOWN")
+    lat, lon = validate_latlon(point.get("lat"), point.get("lon"))
     return {
         "uid": root.get("uid"),
         "callsign": callsign,
         "affiliation": affiliation,
         "role": role_by_type.get(cot_type, "infantry" if affiliation == "friendly" else "opfor_infantry"),
-        "lat": float(point.get("lat")),
-        "lon": float(point.get("lon")),
+        "lat": lat,
+        "lon": lon,
     }

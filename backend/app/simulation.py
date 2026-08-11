@@ -16,6 +16,7 @@ from collections import deque
 
 from . import db
 from .cot import cot_xml, new_uid
+from .geo import validate_latlon, validate_speed
 from .propagation import delivery_probability, haversine_m, link_quality
 from .scenario import SCENARIO, UNITS, phase_at, position_at
 from .terrain import terrain
@@ -76,14 +77,13 @@ class InjectedUnit:
         self.role = spec.get("role", "infantry")
         self.affiliation = spec.get("affiliation", "friendly")
         self.mesh_id = spec.get("mesh_id")
-        self.lat = float(spec["lat"])
-        self.lon = float(spec["lon"])
+        self.lat, self.lon = validate_latlon(spec["lat"], spec["lon"])
         self.target = None  # (lat, lon)
-        self.speed_mps = float(spec.get("speed_mps", 5.0))
+        self.speed_mps = validate_speed(spec.get("speed_mps", 5.0))
         self.injected_at = tick
         self.destroyed = False
         if spec.get("target_lat") is not None and spec.get("target_lon") is not None:
-            self.target = (float(spec["target_lat"]), float(spec["target_lon"]))
+            self.target = validate_latlon(spec["target_lat"], spec["target_lon"])
 
     def step(self):
         if self.target is None:
@@ -318,9 +318,9 @@ class Simulation:
             unit = self.injected.get(uid)
             if unit is None or unit.destroyed:
                 return False
-            unit.target = (float(target_lat), float(target_lon))
+            unit.target = validate_latlon(target_lat, target_lon)
             if speed_mps is not None:
-                unit.speed_mps = float(speed_mps)
+                unit.speed_mps = validate_speed(speed_mps)
             return True
 
     def destroy_unit(self, uid: str) -> bool:
